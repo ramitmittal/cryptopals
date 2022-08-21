@@ -3,6 +3,7 @@ package set5
 import (
 	"bytes"
 	"crypto/sha1"
+	"errors"
 	"fmt"
 	"math/big"
 	"strings"
@@ -256,6 +257,333 @@ func S5c34() {
 	// B
 	go func() {
 		s5c34B(chanM, chanB)
+		wg.Done()
+	}()
+
+	wg.Wait()
+}
+
+func s5c35A(chanA <-chan exchange, chanB chan<- exchange) {
+	p := &big.Int{}
+	g := &big.Int{}
+	a := &big.Int{}
+	a1 := &big.Int{}
+
+	// https://stackoverflow.com/questions/6878590/the-maximum-value-for-an-int-type-in-go
+	maxInt := int64(^uint(0) >> 1)
+
+	pStr := `ffffffffffffffffc90fdaa22168c234c4c6628b80dc1cd129024
+e088a67cc74020bbea63b139b22514a08798e3404ddef9519b3cd
+3a431b302b0a6df25f14374fe1356d6d51c245e485b576625e7ec
+6f44c42e9a637ed6b0bff5cb6f406b7edee386bfb5a899fa5ae9f
+24117c4b1fe649286651ece45b3dc2007cb8a163bf0598da48361
+c55d39a69163fa8fd24cf5f83655d23dca3ad961c62f356208552
+bb9ed529077096966d670c354e4abc9804f1746c08ca237327fff
+fffffffffffff`
+	pStr = strings.ReplaceAll(pStr, "\t", "")
+	pStr = strings.ReplaceAll(pStr, "\n", "")
+	p.SetString(pStr, 16)
+	g.SetInt64(2)
+	a = util.RandomBigInt(maxInt)
+	a1 = a1.Exp(g, a, p)
+
+	chanB <- exchange{
+		stage:   0,
+		numbers: []big.Int{*p, *g},
+	}
+	<-chanA
+	chanB <- exchange{
+		stage:   2,
+		numbers: []big.Int{*a1},
+	}
+	ex3 := <-chanA
+	b1 := ex3.numbers[0]
+
+	s := &big.Int{}
+	s = s.Exp(&b1, a, p)
+	h := sha1.New()
+	if _, err := h.Write(s.Bytes()); err != nil {
+		panic(err)
+	}
+	key := h.Sum(nil)[0:16]
+
+	iv := util.RandomBytes(16)
+	message1 := util.CbcEncrypt(bytes.Repeat([]byte("T"), 16), key, iv)
+	message1 = append(message1, iv...)
+	chanB <- exchange{
+		stage: 4,
+		text:  message1,
+	}
+}
+
+func s5c35Matk0(chanA, chanB chan<- exchange, chanM <-chan exchange) {
+	ex0 := <-chanM
+
+	p := ex0.numbers[0]
+	g := big.Int{}
+	g.SetInt64(1)
+	// B calculates b1 = 1
+	// b1 = (g ** b) mod p
+	// b1 = (1 ** anything) mod largeNumber = 1
+	chanB <- exchange{
+		stage:   ex0.stage,
+		numbers: []big.Int{p, g},
+	}
+
+	// Forward empty ACK message
+	ex1 := <-chanM
+	chanA <- ex1
+
+	// for A
+	// s = (b1 ** a) mod p
+	// s = (1 ** anything) mod largeNumber = 1
+	// for B
+	// s = (a1 ** b) mod p
+	// send a1 = 1 to B
+	ex2 := <-chanM
+	chanB <- exchange{
+		stage:   ex2.stage,
+		numbers: []big.Int{g},
+	}
+
+	ex3 := <-chanM
+	chanA <- ex3
+
+	ex4 := <-chanM
+	receivedMessage := ex4.text
+
+	h := sha1.New()
+	if _, err := h.Write([]byte{1}); err != nil {
+		panic(err)
+	}
+	key := h.Sum(nil)[0:16]
+	iv := receivedMessage[len(receivedMessage)-16:]
+	receivedPlain := util.CbcDecrypt(receivedMessage[:len(receivedMessage)-16], key, iv)
+	fmt.Printf("M recevied: %s\n", receivedPlain)
+
+	chanB <- ex4
+}
+
+func s5c35Matk1(chanA, chanB chan<- exchange, chanM <-chan exchange) {
+	ex0 := <-chanM
+
+	p := ex0.numbers[0]
+	// B calculates b1 = 0
+	// b1 = (g ** b) mod p
+	// b1 = (p ** anything) mod p = 0
+	chanB <- exchange{
+		stage:   ex0.stage,
+		numbers: []big.Int{p, p},
+	}
+
+	// Forward empty ACK message
+	ex1 := <-chanM
+	chanA <- ex1
+
+	ex2 := <-chanM
+	// for B
+	// s = (a1 ** b) mod p
+	// send a1 = p to B
+	chanB <- exchange{
+		stage:   ex2.stage,
+		numbers: []big.Int{p},
+	}
+
+	ex3 := <-chanM
+	chanA <- ex3
+
+	ex4 := <-chanM
+	receivedMessage := ex4.text
+
+	s := big.Int{}
+	s.SetInt64(0)
+
+	h := sha1.New()
+	if _, err := h.Write(s.Bytes()); err != nil {
+		panic(err)
+	}
+	key := h.Sum(nil)[0:16]
+	iv := receivedMessage[len(receivedMessage)-16:]
+	receivedPlain := util.CbcDecrypt(receivedMessage[:len(receivedMessage)-16], key, iv)
+	fmt.Printf("M recevied: %s\n", receivedPlain)
+
+	chanB <- ex4
+}
+
+func s5c35Matk2(chanA, chanB chan<- exchange, chanM <-chan exchange) {
+	ex0 := <-chanM
+
+	one := big.Int{}
+	one.SetInt64(1)
+	p := ex0.numbers[0]
+	g := big.Int{}
+	g.Sub(&p, &one)
+
+	// b1 == 1 || b1 == p-1
+	chanB <- exchange{
+		stage:   ex0.stage,
+		numbers: []big.Int{p, g},
+	}
+
+	// Forward empty ACK message
+	ex1 := <-chanM
+	chanA <- ex1
+
+	ex2 := <-chanM
+	// for B
+	// s == b1
+	chanB <- exchange{
+		stage:   ex2.stage,
+		numbers: []big.Int{g},
+	}
+
+	ex3 := <-chanM
+	// value of s may be different for A and B
+	// we need to reencrypt all messages
+	b1 := ex3.numbers[0]
+	chanA <- ex3
+
+	ex4 := <-chanM
+	receivedMessage := ex4.text
+
+	var sForA *big.Int
+	var receivedPlain []byte
+	{
+		s := big.Int{}
+		s.SetInt64(1)
+
+		h := sha1.New()
+		if _, err := h.Write(s.Bytes()); err != nil {
+			panic(err)
+		}
+		key := h.Sum(nil)[0:16]
+		iv := receivedMessage[len(receivedMessage)-16:]
+		receivedPlain = util.CbcDecrypt(receivedMessage[:len(receivedMessage)-16], key, iv)
+		if strings.HasPrefix(string(receivedPlain), "TT") {
+			fmt.Println("M recevied: ", string(receivedPlain))
+			sForA = &s
+		}
+	}
+	if sForA == nil {
+		h := sha1.New()
+		if _, err := h.Write(g.Bytes()); err != nil {
+			panic(err)
+		}
+		key := h.Sum(nil)[0:16]
+		iv := receivedMessage[len(receivedMessage)-16:]
+		receivedPlain = util.CbcDecrypt(receivedMessage[:len(receivedMessage)-16], key, iv)
+		if strings.HasPrefix(string(receivedPlain), "TT") {
+			fmt.Println("M recevied: ", string(receivedPlain))
+			sForA = &g
+		}
+	}
+	if sForA == nil {
+		panic(errors.New("cannot decrypt message from A"))
+	}
+
+	{
+		// re-encrypt for B
+		h := sha1.New()
+		if _, err := h.Write(b1.Bytes()); err != nil {
+			panic(err)
+		}
+		key := h.Sum(nil)[0:16]
+		iv := util.RandomBytes(16)
+		message1 := util.CbcEncrypt(receivedPlain, key, iv)
+		message1 = append(message1, iv...)
+		chanB <- exchange{
+			stage: 4,
+			text:  message1,
+		}
+	}
+}
+
+func s5c35B(chanA chan<- exchange, chanB <-chan exchange) {
+	ex0 := <-chanB
+
+	p := ex0.numbers[0]
+	g := ex0.numbers[1]
+	maxInt := int64(^uint(0) >> 1)
+	b := util.RandomBigInt(maxInt)
+	b1 := &big.Int{}
+	b1 = b1.Exp(&g, b, &p)
+
+	chanA <- exchange{
+		stage: 1,
+	}
+	ex2 := <-chanB
+	a1 := ex2.numbers[0]
+	chanA <- exchange{
+		stage:   3,
+		numbers: []big.Int{*b1},
+	}
+
+	ex4 := <-chanB
+	receivedMessage := ex4.text
+	s := &big.Int{}
+	s = s.Exp(&a1, b, &p)
+	h := sha1.New()
+	if _, err := h.Write(s.Bytes()); err != nil {
+		panic(err)
+	}
+	key := h.Sum(nil)[0:16]
+
+	iv := receivedMessage[len(receivedMessage)-16:]
+	receivedPlain := util.CbcDecrypt(receivedMessage[:len(receivedMessage)-16], key, iv)
+	fmt.Printf("B recevied: %s\n", receivedPlain)
+}
+
+func s5c35func1() {
+	// This is the version without MITM
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	// the channel A reads from
+	chanA := make(chan exchange, 0)
+	// the channel B reads from
+	chanB := make(chan exchange, 0)
+
+	// A
+	go func() {
+		s5c34A(chanA, chanB)
+		wg.Done()
+	}()
+
+	// B
+	go func() {
+		s5c34B(chanA, chanB)
+		wg.Done()
+	}()
+
+	wg.Wait()
+}
+
+// Implement DH with negotiated groups, and break with malicious "g" parameters
+// https://cryptopals.com/sets/5/challenges/35
+func S5c35() {
+	var wg sync.WaitGroup
+	wg.Add(3)
+
+	chanA := make(chan exchange, 0)
+	chanM := make(chan exchange, 0)
+	chanB := make(chan exchange, 0)
+
+	// A
+	go func() {
+		s5c35A(chanA, chanM)
+		wg.Done()
+	}()
+
+	// M
+	go func() {
+		s5c35Matk2(chanA, chanB, chanM)
+		wg.Done()
+	}()
+
+	// B
+	go func() {
+		s5c35B(chanM, chanB)
 		wg.Done()
 	}()
 
