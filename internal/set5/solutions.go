@@ -780,3 +780,106 @@ func S5c36() {
 
 	wg.Wait()
 }
+
+// Same as s5c37Client but sends a1 = 0
+func s5c37ClientOne(chanC, chanS chan exchange) {
+	i := []byte("pillow@example.com")
+	a1 := &big.Int{}
+	chanS <- exchange{
+		stage:   0,
+		numbers: []big.Int{*a1},
+		text:    i,
+	}
+	ex1 := <-chanC
+
+	// When a1 == 0 then s == 0
+	s := &big.Int{}
+	var k1 []byte
+	{
+		h := sha256.New()
+		if _, err := h.Write(s.Bytes()); err != nil {
+			panic(err)
+		}
+		k1 = h.Sum(nil)
+	}
+
+	ex2 := <-chanC
+	var eh []byte
+	{
+		k1salt := append(k1, ex1.numbers[1].Bytes()...)
+		h := sha256.New()
+		if _, err := h.Write(k1salt); err != nil {
+			panic(err)
+		}
+		eh = h.Sum(nil)
+	}
+
+	fmt.Println(ex2.text)
+	fmt.Println(eh)
+}
+
+// Same as s5c37Client but sends a1 = n
+func s5c37ClientTwo(chanC, chanS chan exchange) {
+	n := bignumbers.NistPrime()
+	i := []byte("pillow@example.com")
+
+	a1 := n
+	chanS <- exchange{
+		stage:   0,
+		numbers: []big.Int{*a1},
+		text:    i,
+	}
+
+	ex1 := <-chanC
+
+	// When a1 == n then s == 0
+	s := &big.Int{}
+	var k1 []byte
+	{
+		h := sha256.New()
+		if _, err := h.Write(s.Bytes()); err != nil {
+			panic(err)
+		}
+		k1 = h.Sum(nil)
+	}
+
+	ex2 := <-chanC
+
+	var eh []byte
+	{
+		k1salt := append(k1, ex1.numbers[1].Bytes()...)
+		h := sha256.New()
+		if _, err := h.Write(k1salt); err != nil {
+			panic(err)
+		}
+		eh = h.Sum(nil)
+	}
+
+	fmt.Println(ex2.text)
+	fmt.Println(eh)
+}
+
+// Break SRP with a zero key
+// https://cryptopals.com/sets/5/challenges/37
+func S5c37() {
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	chanS := make(chan exchange)
+	chanC := make(chan exchange)
+
+	// C
+	go func() {
+		s5c37ClientTwo(chanC, chanS)
+		wg.Done()
+	}()
+
+	// S
+	go func() {
+		// reuse the server from previous problem
+		s5c36Server(chanC, chanS)
+		wg.Done()
+	}()
+
+	wg.Wait()
+}
