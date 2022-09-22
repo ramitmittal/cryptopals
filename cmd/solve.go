@@ -5,5 +5,5 @@ import (
 )
 
 func main() {
-	set5.S5c35()
+	set5.S5c36()
 }

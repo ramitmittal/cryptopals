@@ -3,6 +3,7 @@ package set5
 import (
 	"bytes"
 	"crypto/sha1"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"math/big"
@@ -10,6 +11,7 @@ import (
 	"sync"
 
 	"ramitmittal.com/cryptopals/internal/util"
+	"ramitmittal.com/cryptopals/internal/util/bignumbers"
 )
 
 // Implement Diffie-Hellman
@@ -584,6 +586,195 @@ func S5c35() {
 	// B
 	go func() {
 		s5c35B(chanM, chanB)
+		wg.Done()
+	}()
+
+	wg.Wait()
+}
+
+func s5c36Client(chanC, chanS chan exchange) {
+	maxInt := int64(^uint(0) >> 1)
+
+	n := bignumbers.NistPrime()
+	g := big.NewInt(2)
+	k := big.NewInt(3)
+	i := []byte("pillow@example.com")
+	password := []byte("bb065f841eb339a6cef96eb6")
+
+	a := util.RandomBigInt(maxInt)
+	a1 := &big.Int{}
+	a1.Exp(g, a, n)
+
+	chanS <- exchange{
+		stage:   0,
+		numbers: []big.Int{*a1},
+		text:    i,
+	}
+
+	ex1 := <-chanC
+
+	u := &big.Int{}
+	{
+		a1b1 := append(a1.Bytes(), ex1.numbers[0].Bytes()...)
+		h := sha256.New()
+		if _, err := h.Write(a1b1); err != nil {
+			panic(err)
+		}
+
+		uh := h.Sum(nil)
+		u.SetBytes(uh)
+	}
+
+	x := &big.Int{}
+	{
+		saltAndPassword := append(ex1.numbers[1].Bytes(), []byte(password)...)
+		h := sha256.New()
+		if _, err := h.Write(saltAndPassword); err != nil {
+			panic(err)
+		}
+		xh := h.Sum(nil)
+		x.SetBytes(xh)
+	}
+	s := &big.Int{}
+	var k1 []byte
+	{
+		b1 := ex1.numbers[0]
+		o1 := &big.Int{}
+		o1.Exp(g, x, n)
+
+		o1.Mul(k, o1)
+		o1.Sub(&b1, o1)
+
+		o2 := &big.Int{}
+		o2.Mul(u, x)
+		o2.Add(a, o2)
+		s.Exp(o1, o2, n)
+
+		h := sha256.New()
+		if _, err := h.Write(s.Bytes()); err != nil {
+			panic(err)
+		}
+		k1 = h.Sum(nil)
+	}
+
+	ex2 := <-chanC
+
+	var eh []byte
+	{
+		k1salt := append(k1, ex1.numbers[1].Bytes()...)
+		h := sha256.New()
+		if _, err := h.Write(k1salt); err != nil {
+			panic(err)
+		}
+		eh = h.Sum(nil)
+	}
+
+	fmt.Println(ex2.text)
+	fmt.Println(eh)
+}
+
+func s5c36Server(chanC, chanS chan exchange) {
+	maxInt := int64(^uint(0) >> 1)
+
+	n := bignumbers.NistPrime()
+	g := big.NewInt(2)
+	k := big.NewInt(3)
+	password := []byte("bb065f841eb339a6cef96eb6")
+	salt := util.RandomBigInt(maxInt)
+
+	v := &big.Int{}
+	{
+		saltAndPassword := append(salt.Bytes(), password...)
+		h := sha256.New()
+		if _, err := h.Write(saltAndPassword); err != nil {
+			panic(err)
+		}
+		xh := h.Sum(nil)
+		x := &big.Int{}
+		x.SetBytes(xh)
+
+		v.Exp(g, x, n)
+	}
+
+	ex0 := <-chanS
+
+	b := util.RandomBigInt(maxInt)
+	b1 := &big.Int{}
+	{
+		one := &big.Int{}
+		one.Mul(k, v)
+		two := &big.Int{}
+		two.Exp(g, b, n)
+		b1.Add(one, two)
+	}
+
+	chanC <- exchange{
+		stage:   1,
+		numbers: []big.Int{*b1, *salt},
+	}
+
+	u := &big.Int{}
+	{
+		a1b1 := append(ex0.numbers[0].Bytes(), b1.Bytes()...)
+		h := sha256.New()
+		if _, err := h.Write(a1b1); err != nil {
+			panic(err)
+		}
+		uh := h.Sum(nil)
+		u.SetBytes(uh)
+	}
+
+	s := &big.Int{}
+	var k1 []byte
+	{
+		a1 := ex0.numbers[0]
+		o1 := &big.Int{}
+
+		o1.Exp(v, u, n)
+
+		o1.Mul(&a1, o1)
+		s.Exp(o1, b, n)
+		h := sha256.New()
+		if _, err := h.Write(s.Bytes()); err != nil {
+			panic(err)
+		}
+		k1 = h.Sum(nil)
+	}
+
+	var eh []byte
+	{
+		k1salt := append(k1, salt.Bytes()...)
+		h := sha256.New()
+		if _, err := h.Write(k1salt); err != nil {
+			panic(err)
+		}
+		eh = h.Sum(nil)
+	}
+
+	chanC <- exchange{
+		stage: 2,
+		text:  eh,
+	}
+}
+
+// Implement Secure Remote Password (SRP)
+// https://cryptopals.com/sets/5/challenges/36
+func S5c36() {
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	chanS := make(chan exchange)
+	chanC := make(chan exchange)
+
+	// C
+	go func() {
+		s5c36Client(chanC, chanS)
+		wg.Done()
+	}()
+
+	// S
+	go func() {
+		s5c36Server(chanC, chanS)
 		wg.Done()
 	}()
 
