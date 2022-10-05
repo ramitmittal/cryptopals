@@ -2,6 +2,7 @@ package set5
 
 import (
 	"bytes"
+	"crypto/rand"
 	"crypto/sha1"
 	"crypto/sha256"
 	"errors"
@@ -266,7 +267,7 @@ func S5c34() {
 }
 
 func s5c35A(chanA <-chan exchange, chanB chan<- exchange) {
-	p := &big.Int{}
+	p := bignumbers.NistPrime()
 	g := &big.Int{}
 	a := &big.Int{}
 	a1 := &big.Int{}
@@ -274,17 +275,6 @@ func s5c35A(chanA <-chan exchange, chanB chan<- exchange) {
 	// https://stackoverflow.com/questions/6878590/the-maximum-value-for-an-int-type-in-go
 	maxInt := int64(^uint(0) >> 1)
 
-	pStr := `ffffffffffffffffc90fdaa22168c234c4c6628b80dc1cd129024
-e088a67cc74020bbea63b139b22514a08798e3404ddef9519b3cd
-3a431b302b0a6df25f14374fe1356d6d51c245e485b576625e7ec
-6f44c42e9a637ed6b0bff5cb6f406b7edee386bfb5a899fa5ae9f
-24117c4b1fe649286651ece45b3dc2007cb8a163bf0598da48361
-c55d39a69163fa8fd24cf5f83655d23dca3ad961c62f356208552
-bb9ed529077096966d670c354e4abc9804f1746c08ca237327fff
-fffffffffffff`
-	pStr = strings.ReplaceAll(pStr, "\t", "")
-	pStr = strings.ReplaceAll(pStr, "\n", "")
-	p.SetString(pStr, 16)
 	g.SetInt64(2)
 	a = util.RandomBigInt(maxInt)
 	a1 = a1.Exp(g, a, p)
@@ -882,4 +872,311 @@ func S5c37() {
 	}()
 
 	wg.Wait()
+}
+
+func s5c38Server(chanC, chanS chan exchange) {
+	maxInt := int64(^uint(0) >> 1)
+
+	n := bignumbers.NistPrime()
+	g := big.NewInt(2)
+	password := []byte("bb065f841eb339a6cef96eb7")
+	salt := util.RandomBigInt(maxInt)
+
+	v := &big.Int{}
+	{
+		saltAndPassword := append(salt.Bytes(), password...)
+		h := sha256.New()
+		if _, err := h.Write(saltAndPassword); err != nil {
+			panic(err)
+		}
+		xh := h.Sum(nil)
+		x := &big.Int{}
+		x.SetBytes(xh)
+
+		v.Exp(g, x, n)
+	}
+
+	ex0 := <-chanS
+
+	b := util.RandomBigInt(maxInt)
+	b1 := &big.Int{}
+	b1.Exp(g, b, n)
+
+	u := &big.Int{}
+	u.SetBytes(util.RandomBytes(16))
+
+	chanC <- exchange{
+		stage:   1,
+		numbers: []big.Int{*b1, *salt, *u},
+	}
+
+	s := &big.Int{}
+	var k1 []byte
+	{
+		a1 := &ex0.numbers[0]
+		o1 := &big.Int{}
+		o1.Exp(v, u, n)
+		o1.Mul(a1, o1)
+		s.Exp(o1, b, n)
+		h := sha256.New()
+		if _, err := h.Write(s.Bytes()); err != nil {
+			panic(err)
+		}
+		k1 = h.Sum(nil)
+	}
+
+	ex2 := <-chanS
+
+	var eh []byte
+	{
+		k1salt := append(k1, salt.Bytes()...)
+		h := sha256.New()
+		if _, err := h.Write(k1salt); err != nil {
+			panic(err)
+		}
+		eh = h.Sum(nil)
+	}
+
+	fmt.Println(ex2.text)
+	fmt.Println(eh)
+
+}
+
+func s5c38Client(chanC, chanS chan exchange) {
+	maxInt := int64(^uint(0) >> 1)
+
+	n := bignumbers.NistPrime()
+	g := big.NewInt(2)
+	i := []byte("pillow@example.com")
+	password := []byte("world")
+
+	a := util.RandomBigInt(maxInt)
+	a1 := &big.Int{}
+	a1.Exp(g, a, n)
+
+	chanS <- exchange{
+		stage:   0,
+		numbers: []big.Int{*a1},
+		text:    i,
+	}
+
+	ex1 := <-chanC
+
+	x := &big.Int{}
+	{
+		saltAndPassword := append(ex1.numbers[1].Bytes(), []byte(password)...)
+		h := sha256.New()
+		if _, err := h.Write(saltAndPassword); err != nil {
+			panic(err)
+		}
+		xh := h.Sum(nil)
+		x.SetBytes(xh)
+	}
+	s := &big.Int{}
+	var k1 []byte
+	{
+		b1 := &ex1.numbers[0]
+		u := &ex1.numbers[2]
+		o2 := &big.Int{}
+		o2.Mul(u, x)
+		o2.Add(a, o2)
+		s.Exp(b1, o2, n)
+
+		h := sha256.New()
+		if _, err := h.Write(s.Bytes()); err != nil {
+			panic(err)
+		}
+		k1 = h.Sum(nil)
+	}
+
+	var eh []byte
+	{
+		k1salt := append(k1, ex1.numbers[1].Bytes()...)
+		h := sha256.New()
+		if _, err := h.Write(k1salt); err != nil {
+			panic(err)
+		}
+		eh = h.Sum(nil)
+	}
+
+	chanS <- exchange{
+		stage: 2,
+		text:  eh,
+	}
+
+}
+
+func s5c38Middle(chanC, chanM chan exchange) {
+	maxInt := int64(^uint(0) >> 1)
+
+	n := bignumbers.NistPrime()
+	g := big.NewInt(2)
+	salt := util.RandomBigInt(maxInt)
+
+	b := util.RandomBigInt(maxInt)
+	b1 := &big.Int{}
+	b1.Exp(g, b, n)
+
+	u := &big.Int{}
+	u.SetBytes(util.RandomBytes(16))
+
+	ex0 := <-chanM
+
+	chanC <- exchange{
+		stage:   1,
+		numbers: []big.Int{*b1, *salt, *u},
+	}
+
+	ex2 := <-chanM
+
+	dictionary := []string{
+		"hello",
+		"world",
+	}
+
+	for _, i := range dictionary {
+		saltAndPassword := append(salt.Bytes(), []byte(i)...)
+		h := sha256.New()
+		if _, err := h.Write(saltAndPassword); err != nil {
+			panic(err)
+		}
+		xh := h.Sum(nil)
+		x := &big.Int{}
+		x.SetBytes(xh)
+
+		v := &big.Int{}
+		v.Exp(g, x, n)
+
+		a1 := &ex0.numbers[0]
+		o1 := &big.Int{}
+		o1.Exp(v, u, n)
+		o1.Mul(a1, o1)
+
+		s := &big.Int{}
+		s.Exp(o1, b, n)
+		h2 := sha256.New()
+		if _, err := h2.Write(s.Bytes()); err != nil {
+			panic(err)
+		}
+		k1 := h2.Sum(nil)
+
+		k1salt := append(k1, salt.Bytes()...)
+		h3 := sha256.New()
+		if _, err := h3.Write(k1salt); err != nil {
+			panic(err)
+		}
+		eh := h3.Sum(nil)
+
+		fmt.Printf("%x\n%x\n\n", eh, ex2.text)
+	}
+
+}
+
+// Offline dictionary attack on simplified SRP
+// https://cryptopals.com/sets/5/challenges/38
+func S5c38() {
+	var wg sync.WaitGroup
+	wg.Add(3)
+
+	chanM := make(chan exchange)
+	chanC := make(chan exchange)
+
+	// C
+	go func() {
+		s5c38Client(chanC, chanM)
+		wg.Done()
+	}()
+
+	// M
+	go func() {
+		s5c38Middle(chanC, chanM)
+		wg.Done()
+	}()
+
+	wg.Wait()
+}
+
+func s5c39Keygen() (e, n, d *big.Int) {
+	one := big.NewInt(1)
+	e = big.NewInt(3)
+
+	for {
+		p, err := rand.Prime(rand.Reader, 1024)
+		if err != nil {
+			panic(err)
+		}
+		q, err := rand.Prime(rand.Reader, 1024)
+		if err != nil {
+			panic(err)
+		}
+
+		if p.Cmp(q) == 0 {
+			continue
+		}
+
+		n = new(big.Int).Mul(p, q)
+
+		et1 := new(big.Int).Sub(p, one)
+		et2 := new(big.Int).Sub(q, one)
+		et := bignumbers.LCM(et1, et2)
+
+		d = new(big.Int).ModInverse(e, et)
+
+		if d != nil {
+			break
+		}
+	}
+
+	return e, n, d
+}
+
+// Implement RSA
+// https://cryptopals.com/sets/5/challenges/39
+func S5c39() {
+	e, n, d := s5c39Keygen()
+
+	plainText := []byte("Hello, World!")
+	plainTextNumber := new(big.Int).SetBytes(plainText)
+	c := new(big.Int).Exp(plainTextNumber, e, n)
+
+	m := new(big.Int).Exp(c, d, n)
+	fmt.Println(string(m.Bytes()))
+}
+
+// Implement an E=3 RSA Broadcast attack
+// https://cryptopals.com/sets/5/challenges/40
+func S5c40() {
+	e1, n1, _ := s5c39Keygen()
+	e2, n2, _ := s5c39Keygen()
+	e3, n3, _ := s5c39Keygen()
+
+	plainText := []byte("Hello, World!")
+	plainTextNumber := new(big.Int).SetBytes(plainText)
+
+	c1 := new(big.Int).Exp(plainTextNumber, e1, n1)
+	c2 := new(big.Int).Exp(plainTextNumber, e2, n2)
+	c3 := new(big.Int).Exp(plainTextNumber, e3, n3)
+
+	ms1 := new(big.Int).Mul(n2, n3)
+	ms2 := new(big.Int).Mul(n3, n1)
+	ms3 := new(big.Int).Mul(n1, n2)
+
+	n123 := new(big.Int).Mul(n1, n2)
+	n123.Mul(n123, n3)
+
+	r1 := new(big.Int).Mul(c1, ms1)
+	r1.Mul(r1, new(big.Int).ModInverse(ms1, n1))
+
+	r2 := new(big.Int).Mul(c2, ms2)
+	r2.Mul(r2, new(big.Int).ModInverse(ms2, n2))
+
+	r3 := new(big.Int).Mul(c3, ms3)
+	r3.Mul(r3, new(big.Int).ModInverse(ms3, n3))
+
+	r := new(big.Int).Add(r1, r2)
+	r.Add(r, r3)
+	r.Mod(r, n123)
+
+	cr := bignumbers.CubeRoot(r)
+	fmt.Println(string(cr.Bytes()))
 }

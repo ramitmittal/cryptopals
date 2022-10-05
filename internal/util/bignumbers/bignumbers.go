@@ -22,3 +22,38 @@ func NistPrime() *big.Int {
 
 	return p
 }
+
+func CubeRoot(cube *big.Int) *big.Int {
+	big1 := big.NewInt(1)
+	big3 := big.NewInt(3)
+
+	x := new(big.Int).Rsh(cube, uint(cube.BitLen())/3*2)
+	if x.Sign() == 0 {
+		return nil
+	}
+	for {
+		d := new(big.Int).Exp(x, big3, nil)
+		d.Sub(d, cube)
+		d.Div(d, big3)
+		d.Div(d, x)
+		d.Div(d, x)
+		if d.Sign() == 0 {
+			break
+		}
+		x.Sub(x, d)
+	}
+	for new(big.Int).Exp(x, big3, nil).Cmp(cube) < 0 {
+		x.Add(x, big1)
+	}
+	for new(big.Int).Exp(x, big3, nil).Cmp(cube) > 0 {
+		x.Sub(x, big1)
+	}
+	return x
+}
+
+func LCM(a, b *big.Int) *big.Int {
+	x := new(big.Int).Mul(a, b)
+	y := new(big.Int).GCD(nil, nil, a, b)
+
+	return new(big.Int).Div(x, y)
+}
