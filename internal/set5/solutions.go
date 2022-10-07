@@ -2,7 +2,6 @@ package set5
 
 import (
 	"bytes"
-	"crypto/rand"
 	"crypto/sha1"
 	"crypto/sha256"
 	"errors"
@@ -13,14 +12,12 @@ import (
 
 	"ramitmittal.com/cryptopals/internal/util"
 	"ramitmittal.com/cryptopals/internal/util/bignumbers"
+	"ramitmittal.com/cryptopals/internal/util/rsa"
 )
 
 // Implement Diffie-Hellman
 // https://cryptopals.com/sets/5/challenges/33
 func S5c33() {
-	// https://stackoverflow.com/questions/6878590/the-maximum-value-for-an-int-type-in-go
-	maxInt := int64(^uint(0) >> 1)
-
 	pStr := `ffffffffffffffffc90fdaa22168c234c4c6628b80dc1cd129024
 	e088a67cc74020bbea63b139b22514a08798e3404ddef9519b3cd
 	3a431b302b0a6df25f14374fe1356d6d51c245e485b576625e7ec
@@ -38,11 +35,11 @@ func S5c33() {
 	g := &big.Int{}
 	g.SetInt64(2)
 
-	a := util.RandomBigInt(maxInt)
+	a := util.RandomBigInt()
 	a1 := &big.Int{}
 	a1 = a1.Exp(g, a, p)
 
-	b := util.RandomBigInt(maxInt)
+	b := util.RandomBigInt()
 	b1 := &big.Int{}
 	b1 = b1.Exp(g, b, p)
 
@@ -68,9 +65,6 @@ func s5c34A(chanA <-chan exchange, chanB chan<- exchange) {
 	a := &big.Int{}
 	a1 := &big.Int{}
 
-	// https://stackoverflow.com/questions/6878590/the-maximum-value-for-an-int-type-in-go
-	maxInt := int64(^uint(0) >> 1)
-
 	pStr := `ffffffffffffffffc90fdaa22168c234c4c6628b80dc1cd129024
 e088a67cc74020bbea63b139b22514a08798e3404ddef9519b3cd
 3a431b302b0a6df25f14374fe1356d6d51c245e485b576625e7ec
@@ -85,7 +79,7 @@ fffffffffffff`
 	p.SetString(pStr, 16)
 	g.SetInt64(2)
 
-	a = util.RandomBigInt(maxInt)
+	a = util.RandomBigInt()
 	a1 = a1.Exp(g, a, p)
 
 	chanB <- exchange{
@@ -173,9 +167,7 @@ func s5c34B(chanA chan<- exchange, chanB <-chan exchange) {
 	g := ex0.numbers[1]
 	a1 := ex0.numbers[2]
 
-	maxInt := int64(^uint(0) >> 1)
-
-	b := util.RandomBigInt(maxInt)
+	b := util.RandomBigInt()
 	b1 := &big.Int{}
 	b1 = b1.Exp(&g, b, &p)
 
@@ -272,11 +264,8 @@ func s5c35A(chanA <-chan exchange, chanB chan<- exchange) {
 	a := &big.Int{}
 	a1 := &big.Int{}
 
-	// https://stackoverflow.com/questions/6878590/the-maximum-value-for-an-int-type-in-go
-	maxInt := int64(^uint(0) >> 1)
-
 	g.SetInt64(2)
-	a = util.RandomBigInt(maxInt)
+	a = util.RandomBigInt()
 	a1 = a1.Exp(g, a, p)
 
 	chanB <- exchange{
@@ -495,8 +484,7 @@ func s5c35B(chanA chan<- exchange, chanB <-chan exchange) {
 
 	p := ex0.numbers[0]
 	g := ex0.numbers[1]
-	maxInt := int64(^uint(0) >> 1)
-	b := util.RandomBigInt(maxInt)
+	b := util.RandomBigInt()
 	b1 := &big.Int{}
 	b1 = b1.Exp(&g, b, &p)
 
@@ -583,15 +571,13 @@ func S5c35() {
 }
 
 func s5c36Client(chanC, chanS chan exchange) {
-	maxInt := int64(^uint(0) >> 1)
-
 	n := bignumbers.NistPrime()
 	g := big.NewInt(2)
 	k := big.NewInt(3)
 	i := []byte("pillow@example.com")
 	password := []byte("bb065f841eb339a6cef96eb6")
 
-	a := util.RandomBigInt(maxInt)
+	a := util.RandomBigInt()
 	a1 := &big.Int{}
 	a1.Exp(g, a, n)
 
@@ -664,13 +650,11 @@ func s5c36Client(chanC, chanS chan exchange) {
 }
 
 func s5c36Server(chanC, chanS chan exchange) {
-	maxInt := int64(^uint(0) >> 1)
-
 	n := bignumbers.NistPrime()
 	g := big.NewInt(2)
 	k := big.NewInt(3)
 	password := []byte("bb065f841eb339a6cef96eb6")
-	salt := util.RandomBigInt(maxInt)
+	salt := util.RandomBigInt()
 
 	v := &big.Int{}
 	{
@@ -688,7 +672,7 @@ func s5c36Server(chanC, chanS chan exchange) {
 
 	ex0 := <-chanS
 
-	b := util.RandomBigInt(maxInt)
+	b := util.RandomBigInt()
 	b1 := &big.Int{}
 	{
 		one := &big.Int{}
@@ -875,12 +859,10 @@ func S5c37() {
 }
 
 func s5c38Server(chanC, chanS chan exchange) {
-	maxInt := int64(^uint(0) >> 1)
-
 	n := bignumbers.NistPrime()
 	g := big.NewInt(2)
 	password := []byte("bb065f841eb339a6cef96eb7")
-	salt := util.RandomBigInt(maxInt)
+	salt := util.RandomBigInt()
 
 	v := &big.Int{}
 	{
@@ -898,7 +880,7 @@ func s5c38Server(chanC, chanS chan exchange) {
 
 	ex0 := <-chanS
 
-	b := util.RandomBigInt(maxInt)
+	b := util.RandomBigInt()
 	b1 := &big.Int{}
 	b1.Exp(g, b, n)
 
@@ -943,14 +925,12 @@ func s5c38Server(chanC, chanS chan exchange) {
 }
 
 func s5c38Client(chanC, chanS chan exchange) {
-	maxInt := int64(^uint(0) >> 1)
-
 	n := bignumbers.NistPrime()
 	g := big.NewInt(2)
 	i := []byte("pillow@example.com")
 	password := []byte("world")
 
-	a := util.RandomBigInt(maxInt)
+	a := util.RandomBigInt()
 	a1 := &big.Int{}
 	a1.Exp(g, a, n)
 
@@ -1007,13 +987,11 @@ func s5c38Client(chanC, chanS chan exchange) {
 }
 
 func s5c38Middle(chanC, chanM chan exchange) {
-	maxInt := int64(^uint(0) >> 1)
-
 	n := bignumbers.NistPrime()
 	g := big.NewInt(2)
-	salt := util.RandomBigInt(maxInt)
+	salt := util.RandomBigInt()
 
-	b := util.RandomBigInt(maxInt)
+	b := util.RandomBigInt()
 	b1 := &big.Int{}
 	b1.Exp(g, b, n)
 
@@ -1096,44 +1074,10 @@ func S5c38() {
 	wg.Wait()
 }
 
-func s5c39Keygen() (e, n, d *big.Int) {
-	one := big.NewInt(1)
-	e = big.NewInt(3)
-
-	for {
-		p, err := rand.Prime(rand.Reader, 1024)
-		if err != nil {
-			panic(err)
-		}
-		q, err := rand.Prime(rand.Reader, 1024)
-		if err != nil {
-			panic(err)
-		}
-
-		if p.Cmp(q) == 0 {
-			continue
-		}
-
-		n = new(big.Int).Mul(p, q)
-
-		et1 := new(big.Int).Sub(p, one)
-		et2 := new(big.Int).Sub(q, one)
-		et := bignumbers.LCM(et1, et2)
-
-		d = new(big.Int).ModInverse(e, et)
-
-		if d != nil {
-			break
-		}
-	}
-
-	return e, n, d
-}
-
 // Implement RSA
 // https://cryptopals.com/sets/5/challenges/39
 func S5c39() {
-	e, n, d := s5c39Keygen()
+	e, n, d := rsa.Keygen()
 
 	plainText := []byte("Hello, World!")
 	plainTextNumber := new(big.Int).SetBytes(plainText)
@@ -1146,9 +1090,9 @@ func S5c39() {
 // Implement an E=3 RSA Broadcast attack
 // https://cryptopals.com/sets/5/challenges/40
 func S5c40() {
-	e1, n1, _ := s5c39Keygen()
-	e2, n2, _ := s5c39Keygen()
-	e3, n3, _ := s5c39Keygen()
+	e1, n1, _ := rsa.Keygen()
+	e2, n2, _ := rsa.Keygen()
+	e3, n3, _ := rsa.Keygen()
 
 	plainText := []byte("Hello, World!")
 	plainTextNumber := new(big.Int).SetBytes(plainText)
