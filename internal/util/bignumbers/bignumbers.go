@@ -23,6 +23,7 @@ func NistPrime() *big.Int {
 	return p
 }
 
+// Returns rounded down integer for non-perfect cubes
 func CubeRoot(cube *big.Int) *big.Int {
 	big1 := big.NewInt(1)
 	big3 := big.NewInt(3)
