@@ -5,9 +5,11 @@ import (
 	"crypto/sha1"
 	"fmt"
 	"math/big"
+	"strings"
 
 	"ramitmittal.com/cryptopals/internal/util"
 	"ramitmittal.com/cryptopals/internal/util/bignumbers"
+	"ramitmittal.com/cryptopals/internal/util/dsa"
 	"ramitmittal.com/cryptopals/internal/util/rsa"
 )
 
@@ -187,8 +189,176 @@ func S6c42() {
 	fmt.Println(s6c42Verify(m1, s3.Bytes()))
 }
 
+var (
+	s6c43P *big.Int
+	s6c43Q *big.Int
+	s6c43G *big.Int
+)
+
+func s6c43Sign(m, x *big.Int) (r, s, k *big.Int) {
+	fmt.Println("X ", x)
+
+	qMinus1 := new(big.Int).Sub(s6c43Q, big.NewInt(1))
+	zero := new(big.Int)
+	for {
+		k := util.RandomBigInt()
+		if k.Cmp(zero) != 1 && k.Cmp(qMinus1) != -1 {
+			continue
+		}
+
+		r = new(big.Int).Exp(s6c43G, k, s6c43P)
+		r.Mod(r, s6c43Q)
+		if r.Cmp(zero) == 0 {
+			continue
+		}
+
+		s := new(big.Int).Mul(x, r)
+		s.Add(s, m)
+		s.Mod(s, s6c43Q)
+		s.Mul(s, new(big.Int).ModInverse(k, s6c43Q))
+		s.Mod(s, s6c43Q)
+		if s.Cmp(zero) == 0 {
+			continue
+		}
+
+		return r, s, k
+	}
+}
+
+func s6c43Verify(m, r, s, y *big.Int) bool {
+	zero := new(big.Int)
+	if r.Cmp(zero) != 1 || s.Cmp(zero) != 1 {
+		return false
+	}
+	if r.Cmp(s6c43Q) != -1 || s.Cmp(s6c43Q) != -1 {
+		return false
+	}
+
+	w := new(big.Int).ModInverse(s, s6c43Q)
+
+	u1 := new(big.Int).Mul(m, w)
+	u1.Mod(u1, s6c43Q)
+
+	u2 := new(big.Int).Mul(r, w)
+	u2.Mod(u2, s6c43Q)
+
+	v1 := new(big.Int).Exp(s6c43G, u1, s6c43P)
+	v2 := new(big.Int).Exp(y, u2, s6c43P)
+	v1.Mul(v1, v2)
+	v1.Mod(v1, s6c43P)
+	v1.Mod(v1, s6c43Q)
+
+	return v1.Cmp(r) == 0
+}
+
+func s6c43AttackWithKnownK(m, r, s, k *big.Int) {
+	x := new(big.Int).Mul(s, k)
+	x.Sub(x, m)
+	x.Mul(x, new(big.Int).ModInverse(r, s6c43Q))
+	x.Mod(x, s6c43Q)
+
+	fmt.Println("X ", x)
+}
+
+func s6c43Challenge1() {
+	x, y := dsa.DSAKeygen(s6c43P, s6c43Q, s6c43G)
+
+	var m *big.Int
+	{
+		message := []byte("Hello, world!")
+		h := sha1.New()
+		if _, err := h.Write(message); err != nil {
+			panic(err)
+		}
+		m = new(big.Int).SetBytes(h.Sum(nil))
+	}
+
+	r, s, k := s6c43Sign(m, x)
+
+	s6c43AttackWithKnownK(m, r, s, k)
+	fmt.Println(s6c43Verify(m, r, s, y))
+}
+
+func s643AttackWithSmallK(m, r, s, y *big.Int) {
+	maxK := new(big.Int).Exp(big.NewInt(2), big.NewInt(16), nil)
+	k := big.NewInt(-1)
+	one := big.NewInt(1)
+
+	rInv := new(big.Int).ModInverse(r, s6c43Q)
+
+	for k.Cmp(maxK) < 0 {
+		k.Add(k, one)
+
+		kInv := new(big.Int).ModInverse(k, s6c43Q)
+		if kInv == nil {
+			continue
+		}
+
+		r1 := new(big.Int).Exp(s6c43G, k, s6c43P)
+		r1.Mod(r1, s6c43Q)
+		if r1.Cmp(r) != 0 {
+			continue
+		}
+
+		x := new(big.Int).Mul(s, k)
+		x.Sub(x, m)
+		x.Mul(x, rInv)
+		x.Mod(x, s6c43Q)
+
+		{
+			s1 := new(big.Int).Mul(x, r)
+			s1.Add(s1, m)
+			s1.Mod(s1, s6c43Q)
+			s1.Mul(s1, kInv)
+			s1.Mod(s1, s6c43Q)
+
+			if s1.Cmp(s) == 0 {
+				h := sha1.New()
+				if _, err := h.Write([]byte(x.Text(16))); err != nil {
+					panic(err)
+				}
+				fmt.Printf("%x\n", h.Sum(nil))
+				break
+			}
+		}
+	}
+}
+
+func s6c43Challenge2() {
+	m := "For those that envy a MC it can be hazardous to your health\nSo be friendly, a matter of life and death, just like a etch-a-sketch\n"
+
+	h := sha1.New()
+	if _, err := h.Write([]byte(m)); err != nil {
+		panic(err)
+	}
+	mh := h.Sum(nil)
+
+	mhInt := new(big.Int)
+	mhInt.SetBytes(mh)
+
+	r := new(big.Int)
+	r.SetString("548099063082341131477253921760299949438196259240", 10)
+
+	s := new(big.Int)
+	s.SetString("857042759984254168557880549501802188789837994940", 10)
+
+	yStr := `84ad4719d044495496a3201c8ff484feb45b962e7302e56a392aee4
+	abab3e4bdebf2955b4736012f21a08084056b19bcd7fee56048e004
+	e44984e2f411788efdc837a0d2e5abb7b555039fd243ac01f0fb2ed
+	1dec568280ce678e931868d23eb095fde9d3779191b8c0299d6e07b
+	bb283e6633451e535c45513b2d33c99ea17`
+	yStr = strings.ReplaceAll(yStr, "\t", "")
+	yStr = strings.ReplaceAll(yStr, "\n", "")
+	y := new(big.Int)
+	y.SetString(yStr, 16)
+
+	s643AttackWithSmallK(mhInt, r, s, y)
+}
+
 // DSA key recovery from nonce
 // https://cryptopals.com/sets/6/challenges/43
 func S6c43() {
+	s6c43P, s6c43Q, s6c43G = dsa.DSAParams()
 
+	s6c43Challenge2()
 }
