@@ -366,17 +366,13 @@ func S6c43() {
 	s6c43Challenge2()
 }
 
-// DSA nonce recovery from repeated nonce
-// https://cryptopals.com/sets/6/challenges/44
-func S6c44() {
-	s6c43P, s6c43Q, s6c43G = dsa.DSAParams()
+type message struct {
+	s *big.Int
+	r *big.Int
+	m *big.Int
+}
 
-	type message struct {
-		s *big.Int
-		r *big.Int
-		m *big.Int
-	}
-
+func s6c44Read() []message {
 	var messages []message
 
 	if bytes, err := ioutil.ReadFile("files/6-44.txt"); err != nil {
@@ -410,6 +406,14 @@ func S6c44() {
 		}
 	}
 
+	return messages
+}
+
+// DSA nonce recovery from repeated nonce
+// https://cryptopals.com/sets/6/challenges/44
+func S6c44() {
+	s6c43P, s6c43Q, s6c43G = dsa.DSAParams()
+
 	yStr := `2d026f4bf30195ede3a088da85e398ef869611d0f68f07
     13d51c9c1a3a26c95105d915e2d8cdf26d056b86b8a7b8
     5519b1c23cc3ecdc6062650462e3063bd179c2a6581519
@@ -420,6 +424,8 @@ func S6c44() {
 	yStr = strings.ReplaceAll(yStr, "\n", "")
 	y := new(big.Int)
 	y.SetString(yStr, 16)
+
+	messages := s6c44Read()
 
 	var messagesWithSameK [2]message
 
@@ -447,7 +453,107 @@ func S6c44() {
 	fmt.Printf("%x\n", h.Sum(nil))
 }
 
+// Same as s6c43Sign except the zero comparisons
+func s6c45Sign(m, x *big.Int) (r, s, k *big.Int) {
+	fmt.Println("X ", x)
+
+	qMinus1 := new(big.Int).Sub(s6c43Q, big.NewInt(1))
+	zero := new(big.Int)
+	for {
+		k := util.RandomBigInt()
+		if k.Cmp(zero) != 1 && k.Cmp(qMinus1) != -1 {
+			continue
+		}
+
+		r = new(big.Int).Exp(s6c43G, k, s6c43P)
+		r.Mod(r, s6c43Q)
+
+		s := new(big.Int).Mul(x, r)
+		s.Add(s, m)
+		s.Mod(s, s6c43Q)
+		s.Mul(s, new(big.Int).ModInverse(k, s6c43Q))
+		s.Mod(s, s6c43Q)
+		if s.Cmp(zero) == 0 {
+			continue
+		}
+
+		return r, s, k
+	}
+}
+
+// Same as s6c43Verify except the zero comparisons
+func s6c45Verify(m, r, s, y *big.Int) bool {
+	w := new(big.Int).ModInverse(s, s6c43Q)
+
+	u1 := new(big.Int).Mul(m, w)
+	u1.Mod(u1, s6c43Q)
+
+	u2 := new(big.Int).Mul(r, w)
+	u2.Mod(u2, s6c43Q)
+
+	v1 := new(big.Int).Exp(s6c43G, u1, s6c43P)
+	v2 := new(big.Int).Exp(y, u2, s6c43P)
+	v1.Mul(v1, v2)
+	v1.Mod(v1, s6c43P)
+	v1.Mod(v1, s6c43Q)
+
+	return v1.Cmp(r) == 0
+}
+
 // DSA parameter tampering
 // https://cryptopals.com/sets/6/challenges/45
 func S6c45() {
+	s6c43P, s6c43Q, _ = dsa.DSAParams()
+	s6c43G = new(big.Int)
+
+	x, y := dsa.DSAKeygen(s6c43P, s6c43Q, s6c43G)
+
+	{ // generate signature and verify it
+		m := new(big.Int)
+		m.SetBytes([]byte("bad bad"))
+
+		r, s, _ := s6c45Sign(m, x)
+		// r will be 0
+
+		verified := s6c45Verify(m, r, s, y)
+		fmt.Println("1: ", verified)
+	}
+
+	{ // generate any other signature for any other string
+		m := new(big.Int)
+		// skipped the SHA1 step
+		m.SetBytes([]byte("bad bad"))
+
+		r, s, _ := s6c45Sign(m, x)
+		// r will be 0
+
+		m1 := big.NewInt(42)
+		verified := s6c45Verify(m1, r, s, y)
+		fmt.Println("2: ", verified)
+	}
+
+	s6c43G.Add(s6c43P, big.NewInt(1))
+	_, y = dsa.DSAKeygen(s6c43P, s6c43Q, s6c43G)
+
+	// arbitrary value
+	z := big.NewInt(78)
+	zInv := new(big.Int).ModInverse(z, s6c43Q)
+
+	r := new(big.Int).Exp(y, z, s6c43P)
+	r.Mod(r, s6c43Q)
+
+	s := new(big.Int).Mul(r, zInv)
+
+	{
+		m := new(big.Int)
+		m.SetBytes([]byte("Hello, world"))
+
+		verified := s6c43Verify(m, r, s, y)
+		fmt.Println("3: ", verified)
+
+		m.SetBytes([]byte("Goodbye, world"))
+
+		verified = s6c43Verify(m, r, s, y)
+		fmt.Println("4: ", verified)
+	}
 }
