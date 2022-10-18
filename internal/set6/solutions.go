@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"fmt"
+	"io/ioutil"
 	"math/big"
 	"strings"
 
@@ -251,13 +252,13 @@ func s6c43Verify(m, r, s, y *big.Int) bool {
 	return v1.Cmp(r) == 0
 }
 
-func s6c43AttackWithKnownK(m, r, s, k *big.Int) {
+func s6c43AttackWithKnownK(m, r, s, k *big.Int) *big.Int {
 	x := new(big.Int).Mul(s, k)
 	x.Sub(x, m)
 	x.Mul(x, new(big.Int).ModInverse(r, s6c43Q))
 	x.Mod(x, s6c43Q)
 
-	fmt.Println("X ", x)
+	return x
 }
 
 func s6c43Challenge1() {
@@ -275,7 +276,9 @@ func s6c43Challenge1() {
 
 	r, s, k := s6c43Sign(m, x)
 
-	s6c43AttackWithKnownK(m, r, s, k)
+	recoveredX := s6c43AttackWithKnownK(m, r, s, k)
+	fmt.Println("X ", recoveredX)
+
 	fmt.Println(s6c43Verify(m, r, s, y))
 }
 
@@ -361,4 +364,90 @@ func S6c43() {
 	s6c43P, s6c43Q, s6c43G = dsa.DSAParams()
 
 	s6c43Challenge2()
+}
+
+// DSA nonce recovery from repeated nonce
+// https://cryptopals.com/sets/6/challenges/44
+func S6c44() {
+	s6c43P, s6c43Q, s6c43G = dsa.DSAParams()
+
+	type message struct {
+		s *big.Int
+		r *big.Int
+		m *big.Int
+	}
+
+	var messages []message
+
+	if bytes, err := ioutil.ReadFile("files/6-44.txt"); err != nil {
+		panic(err)
+	} else {
+		lines := strings.Split(string(bytes), "\n")
+
+		for i := 0; i < len(lines)/4; i++ {
+			sStr := lines[i*4+1]
+			rStr := lines[i*4+2]
+			mStr := lines[i*4+3]
+
+			sStr = strings.TrimPrefix(sStr, "s: ")
+			rStr = strings.TrimPrefix(rStr, "r: ")
+			mStr = strings.TrimPrefix(mStr, "m: ")
+
+			s := new(big.Int)
+			s.SetString(sStr, 10)
+
+			r := new(big.Int)
+			r.SetString(rStr, 10)
+
+			m := new(big.Int)
+			m.SetString(mStr, 16)
+
+			messages = append(messages, message{
+				s: s,
+				r: r,
+				m: m,
+			})
+		}
+	}
+
+	yStr := `2d026f4bf30195ede3a088da85e398ef869611d0f68f07
+    13d51c9c1a3a26c95105d915e2d8cdf26d056b86b8a7b8
+    5519b1c23cc3ecdc6062650462e3063bd179c2a6581519
+    f674a61f1d89a1fff27171ebc1b93d4dc57bceb7ae2430
+    f98a6a4d83d8279ee65d71c1203d2c96d65ebbf7cce9d3
+    2971c3de5084cce04a2e147821`
+	yStr = strings.ReplaceAll(yStr, "\t", "")
+	yStr = strings.ReplaceAll(yStr, "\n", "")
+	y := new(big.Int)
+	y.SetString(yStr, 16)
+
+	var messagesWithSameK [2]message
+
+	rMap := make(map[string]int)
+	for i, msg := range messages {
+		if v, prs := rMap[msg.r.Text(10)]; prs {
+			messagesWithSameK[0] = messages[v]
+			messagesWithSameK[1] = messages[i]
+			break
+		}
+		rMap[msg.r.Text(10)] = i
+	}
+
+	k := new(big.Int).Sub(messagesWithSameK[0].m, messagesWithSameK[1].m)
+	s1 := new(big.Int).Sub(messagesWithSameK[0].s, messagesWithSameK[1].s)
+	s1Inv := s1.ModInverse(s1, s6c43Q)
+	k.Mul(k, s1Inv)
+	k.Mod(k, s6c43Q)
+
+	x := s6c43AttackWithKnownK(messagesWithSameK[0].m, messagesWithSameK[0].r, messagesWithSameK[0].s, k)
+	h := sha1.New()
+	if _, err := h.Write([]byte(x.Text(16))); err != nil {
+		panic(err)
+	}
+	fmt.Printf("%x\n", h.Sum(nil))
+}
+
+// DSA parameter tampering
+// https://cryptopals.com/sets/6/challenges/45
+func S6c45() {
 }
